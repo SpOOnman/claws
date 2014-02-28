@@ -228,8 +228,6 @@ GNode *procmsg_get_thread_tree(GSList *mlist)
 		parent = root;
 
 		if (msginfo->inreplyto) {
-            //inreplyto_table_insert(inreplyto_table, msginfo->inreplyto, msginfo->msgid);
-            
 			parent = g_hash_table_lookup(msgid_table, msginfo->inreplyto);
 			if (parent == NULL) {
 				parent = root;
