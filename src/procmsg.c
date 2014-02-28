@@ -207,15 +207,17 @@ static void subject_hashtable_free(gpointer key, gpointer value, gpointer data)
 /* return the reversed thread tree */
 GNode *procmsg_get_thread_tree(GSList *mlist)
 {
-	GNode *root, *parent, *node, *next;
-	GHashTable *msgid_table;
+	GNode *root, *parent, *node, *next, *oldest;
+	GHashTable *msgid_table, *inreplyto_table;
 	GHashTable *subject_hashtable = NULL;
 	MsgInfo *msginfo;
 	const gchar *msgid;
         GSList *reflist;
 	START_TIMING("");
-	root = g_node_new(NULL);
+    root = g_node_new(NULL);
+	oldest = g_node_new(NULL);
 	msgid_table = g_hash_table_new(g_str_hash, g_str_equal);
+    inreplyto_table = g_hash_table_new(g_str_hash, g_str_equal);
 	
 	if (prefs_common.thread_by_subject) {
 		subject_hashtable = g_hash_table_new(g_str_hash, g_str_equal);
@@ -226,6 +228,8 @@ GNode *procmsg_get_thread_tree(GSList *mlist)
 		parent = root;
 
 		if (msginfo->inreplyto) {
+            //inreplyto_table_insert(inreplyto_table, msginfo->inreplyto, msginfo->msgid);
+            
 			parent = g_hash_table_lookup(msgid_table, msginfo->inreplyto);
 			if (parent == NULL) {
 				parent = root;
@@ -236,6 +240,14 @@ GNode *procmsg_get_thread_tree(GSList *mlist)
 			 msginfo);
 		if ((msgid = msginfo->msgid) && g_hash_table_lookup(msgid_table, msgid) == NULL)
 			g_hash_table_insert(msgid_table, (gchar *)msgid, node);
+        
+        /* store all messages with replyto as potential unifinished threads parents */
+        /* best node should be the oldest in the found nodes */
+        if (msginfo->inreplyto && msginfo->inreplyto[0] != '\0') {
+            oldest = g_hash_table_lookup(inreplyto_table, msginfo->inreplyto);
+            if (!oldest || msginfo->date_t < ((MsgInfo *)oldest->data)->date_t)
+                g_hash_table_insert(inreplyto_table, (gchar *)msginfo->inreplyto, node);
+        }
 
 		/* CLAWS: add subject to hashtable (without prefix) */
 		if (prefs_common.thread_by_subject) {
@@ -249,7 +261,7 @@ GNode *procmsg_get_thread_tree(GSList *mlist)
 		msginfo = (MsgInfo *)node->data;
 		parent = NULL;
 		
-                if (msginfo->inreplyto)
+        if (msginfo->inreplyto)
 			parent = g_hash_table_lookup(msgid_table, msginfo->inreplyto);
 
 		/* try looking for the indirect parent */
@@ -259,7 +271,12 @@ GNode *procmsg_get_thread_tree(GSList *mlist)
 				if ((parent = g_hash_table_lookup
 					(msgid_table, reflist->data)) != NULL)
 					break;
-                }                                        
+        }
+        
+        /* try looking for oldest message with this replyto */
+        if (!parent && msginfo->inreplyto) {
+            parent = g_hash_table_lookup(inreplyto_table, msginfo->inreplyto);
+        }
               
 		/* node should not be the parent, and node should not
 		   be an ancestor of parent (circular reference) */
@@ -308,6 +325,7 @@ GNode *procmsg_get_thread_tree(GSList *mlist)
 	}
 
 	g_hash_table_destroy(msgid_table);
+    g_hash_table_destroy(inreplyto_table);
 	END_TIMING();
 	return root;
 }
